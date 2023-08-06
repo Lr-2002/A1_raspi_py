@@ -1,12 +1,17 @@
 import numpy as np
 import robot_interface as sdk
 import time
+import math
 from collections import namedtuple
 
 d = {'FR_0': 0, 'FR_1': 1, 'FR_2': 2,
      'FL_0': 3, 'FL_1': 4, 'FL_2': 5,
      'RR_0': 6, 'RR_1': 7, 'RR_2': 8,
      'RL_0': 9, 'RL_1': 10, 'RL_2': 11}
+PosStopF = math.pow(10, 9)
+VelStopF = 16000.0
+HIGHLEVEL = 0xee
+LOWLEVEL = 0xff
 
 class Qauternion:
     def __init__(self, w, x, y, z):
@@ -20,10 +25,10 @@ class Qauternion:
 
 class Robot():
     def __init__(self):
-        self.robot = sdk.leggedType.A1
-        self.ob_dims = self.robot.ob_dims if self.robot is not None else 34
-        self.act_dims = self.robot.act_dims if self.robot is not None else 12
-        self.udp = sdk.UDP(8080, "192.168.123.161", 8007)
+        self.robot = sdk.LeggedType.A1
+        self.ob_dims = self.robot.ob_dims if self.robot is not None else 34 # todo make function
+        self.act_dims = self.robot.act_dims if self.robot is not None else 12 # todo
+        self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
         self.dt = 0.01
         self.safe = sdk.safety(self.robot)
 
@@ -41,7 +46,6 @@ class Robot():
         self.position = [0 for i in range(self.act_dims)]
         self.velocity = [0 for i in range(self.act_dims)]
         # self.quaternion = Qauternion(1, 0, 0, 0)
-        pass
 
     def init_motor(self):
         """
@@ -88,6 +92,12 @@ class Robot():
     def observe(self) -> np.array:
         """
         get the info data from sensor using  imu and posi-sensor
+        the order is
+        1. quaternion
+        2. gyroscope
+        3. accelerometer
+        4. position
+        5. velocity
         :return: np.array([1, self.ob_dims])
         """
         self.udp.Recv()
@@ -95,10 +105,9 @@ class Robot():
 
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
-        info = [self.quaternion, self.gyroscope, self.accelerometer, self.position, self.velocity]
+        info = self.quaternion + self.gyroscope + self.accelerometer + self.position + self.velocity
 
         return np.array(info).astype(np.float32)
-        pass
 
     def get_imu(self):
         """
