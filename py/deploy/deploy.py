@@ -1,13 +1,11 @@
 import torch
 import raisimGymTorch.algo.ppo.module as ppo_module
-import raisimGymTorch.algo.ppo.ppo as PPO
 import argparse
 import numpy as np
 import time
 import os
-from ruamel.yaml import YAML, dump, RoundTripDumper
-from raisimGymTorch.env.bin.rsg_go1 import NormalSampler
-from robot import Robot
+from ruamel.yaml import YAML
+from api.robot import Robot
 import torch.nn as nn
 from sine_generator import sine_generator
 

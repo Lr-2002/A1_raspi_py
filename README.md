@@ -97,4 +97,11 @@ while True:
 
 ## Robot Interface 
 
-Comming soon
+The base function of the robot has been written to the `robot.py`
+
+```sh
+cd py
+sudo python3 ./test_robot.py
+```
+
+The robot usage has been written to the `test_robot.py`
