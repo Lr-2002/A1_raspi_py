@@ -1,0 +1,8 @@
+build
+
+*.o
+.vscode
+./build/*
+cmake-build*
+*cmake-build-debug/*
+*build/*
