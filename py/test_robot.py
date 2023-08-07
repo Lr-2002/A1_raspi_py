@@ -3,6 +3,7 @@ import numpy as np
 import time
 # init the robot
 import signal
+from utils.signal_hand import quit_robot
 import sys
 from deploy.sine_generator import sine_generator
 
@@ -25,18 +26,11 @@ def generate_line_begin_end(begin, end, idx, rate):
 
 
 
-def quit_robot(robot: rbt.Robot):
-    robot.back_safe()
-    print('Task finished')
-    sys.exit(0)
-
 def signal_handler(signal, frame):
     print('You pressed Ctrl+C!')
     quit_robot(a1)
 
 signal.signal(signal.SIGINT, signal_handler)
-
-
 
 # take action
 # a1.take_action(posi)

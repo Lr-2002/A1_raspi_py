@@ -53,5 +53,5 @@ target_link_libraries(lcm_server ${EXTRA_LIBS})
 
 
 # mannul
-add_executable(example_sensor_read examples/example_read_sensor.cpp)
+add_executable(example_sensor examples/example_read_sensor.cpp)
 target_link_libraries(example_sensor ${EXTRA_LIBS})
