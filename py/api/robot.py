@@ -1,5 +1,5 @@
 import numpy as np
-import robot_interface as sdk
+import api.robot_interface as sdk
 import time
 import math
 from collections import namedtuple
@@ -26,11 +26,12 @@ class Qauternion:
 class Robot():
     def __init__(self):
         self.robot = sdk.LeggedType.A1
-        self.ob_dims = self.robot.ob_dims if self.robot is not None else 34 # todo make function
-        self.act_dims = self.robot.act_dims if self.robot is not None else 12 # todo
+        self.ob_dims = 34 # todo make function
+        self.act_dims = 12 # todo
         self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
+        self.udp_state = sdk.UDPState()
         self.dt = 0.01
-        self.safe = sdk.safety(self.robot)
+        self.safe = sdk.Safety(self.robot)
 
         self.__cmd = sdk.LowCmd()
         self.__state = sdk.LowState()
@@ -38,8 +39,8 @@ class Robot():
 
         self.motiontime = 0
 
-        self.kp = 0
-        self.kd = 0
+        self.kp = [0 for i in range(self.act_dims)]
+        self.kd = [0 for i in range(self.act_dims)]
         self.quaternion = [1, 0, 0, 0]
         self.gyroscope = [0, 0, 0]
         self.accelerometer = [0, 0, 0]
@@ -59,6 +60,7 @@ class Robot():
             motor.dq = 0
         self.init_k(self.kp, self.kd)
 
+        self.take_action(self.position)
         print('self.motor inited')
 
     def __motor(self,i):
@@ -150,6 +152,10 @@ class Robot():
         :param position : len(list) == self.act_dims
         :param dq: len(list) == self.act_dims
         """
+        if not (isinstance(position, list)):
+            raise TypeError("Please input a standard position list into the take_action function")
+        if len(position) != self.act_dims:
+            raise Exception("position must have the same length with self.act_dims")
         time.sleep(self.dt)
         assert len(position) == self.act_dims
         # if dq == None:
@@ -172,11 +178,15 @@ class Robot():
 
 
     def init_k(self, kp, kd):
+        if not (isinstance(kp, list)):
+            raise TypeError("Please input a standard kp and kd into the init_k function")
+        if len(kp) != self.act_dims:
+            raise Exception("kp and kd must have the same length with self.act_dims")
         self.kp = kp
         self.kd = kd
         for i in range(self.act_dim()):
-            self.__motor(i).kp = self.kp
-            self.__motor(i).kd = self.kd
+            self.__motor(i).Kp = self.kp[i]
+            self.__motor(i).Kd = self.kd[i]
         print('init motors\' kp and kd finished')
 
     def safe_protect(self):
