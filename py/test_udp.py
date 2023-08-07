@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 sys.path.append('./')
-import robot_interface as sdk
+import api.robot_interface as sdk
 
 
 def jointLinearInterpolation(initPos, targetPos, rate):
@@ -44,15 +44,72 @@ if __name__ == '__main__':
     Tpi = 0
     motiontime = 0
     while True:
-        time.sleep(0.02)
+        time.sleep(0.01)
         motiontime += 1
+
+        # print(motiontime)
+        # print(state.imu.rpy[0])
+
         udp.Recv()
         udp.GetRecv(state)
-        print(motiontime)
-        for i in state.imu.quaternion:
-            print(i)
-        for i in range(12):
-            print(state.motorState[i].q, state.motorState[i].dq)
+        for i in state.motorState:
+            print(i.q, end=' ')
+        print('')
+        # input('go on?')
+        if (motiontime >= 0):
+
+            # first, get record initial position
+            if (motiontime >= 0 and motiontime < 10):
+                qInit[0] = state.motorState[d['RR_0']].q
+                qInit[1] = state.motorState[d['RR_1']].q
+                qInit[2] = state.motorState[d['RR_2']].q
+
+            # second, move to the origin point of a sine movement with Kp Kd
+            if (motiontime >= 10 and motiontime < 400):
+                rate_count += 1
+                rate = rate_count / 200.0  # needs count to 200
+                Kp = [5, 5, 5]
+                Kd = [1, 1, 1]
+                # Kp = [20, 20, 20]
+                # Kd = [2, 2, 2]
+
+                qDes[0] = jointLinearInterpolation(qInit[0], sin_mid_q[0], rate)
+                qDes[1] = jointLinearInterpolation(qInit[1], sin_mid_q[1], rate)
+                qDes[2] = jointLinearInterpolation(qInit[2], sin_mid_q[2], rate)
+
+            # last, do sine wave
+            freq_Hz = 1
+            # freq_Hz = 5
+            freq_rad = freq_Hz * 2 * math.pi
+            t = dt * sin_count
+            if (motiontime >= 400):
+                sin_count += 1
+                # sin_joint1 = 0.6 * sin(3*M_PI*sin_count/1000.0)
+                # sin_joint2 = -0.9 * sin(3*M_PI*sin_count/1000.0)
+                sin_joint1 = 0.3 * math.sin(t * freq_rad)
+                sin_joint2 = -0.3 * math.sin(t * freq_rad)
+                qDes[0] = sin_mid_q[0]
+                qDes[1] = sin_mid_q[1] + sin_joint1
+                qDes[2] = sin_mid_q[2] + sin_joint2
+
+            cmd.motorCmd[d['RR_0']].q = qDes[0]
+            cmd.motorCmd[d['RR_0']].dq = 0
+            cmd.motorCmd[d['RR_0']].Kp = Kp[0]
+            cmd.motorCmd[d['RR_0']].Kd = Kd[0]
+            cmd.motorCmd[d['RR_0']].tau = -0.65
+
+            cmd.motorCmd[d['RR_1']].q = qDes[1]
+            cmd.motorCmd[d['RR_1']].dq = 0
+            cmd.motorCmd[d['RR_1']].Kp = Kp[1]
+            cmd.motorCmd[d['RR_1']].Kd = Kd[1]
+            cmd.motorCmd[d['RR_1']].tau = 0.0
+
+            cmd.motorCmd[d['RR_2']].q = qDes[2]
+            cmd.motorCmd[d['RR_2']].dq = 0
+            cmd.motorCmd[d['RR_2']].Kp = Kp[2]
+            cmd.motorCmd[d['RR_2']].Kd = Kd[2]
+            cmd.motorCmd[d['RR_2']].tau = 0.0
+            # cmd.motorCmd[d['RR_2']].tau = 2 * sin(t*freq_rad)
 
         if (motiontime > 10):
             safe.PowerProtect(cmd, state, 1)

@@ -2,6 +2,7 @@ import numpy as np
 import api.robot_interface as sdk
 import time
 import math
+from utils.one_call import only_run_once
 from collections import namedtuple
 
 d = {'FR_0': 0, 'FR_1': 1, 'FR_2': 2,
@@ -31,36 +32,52 @@ class Robot():
         self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
         self.udp_state = sdk.UDPState()
         self.dt = 0.01
-        self.safe = sdk.Safety(self.robot)
 
-        self.__cmd = sdk.LowCmd()
-        self.__state = sdk.LowState()
-        self.udp.InitCmdData(self.__cmd)
+        #safety
+        self.safe = sdk.Safety(self.robot)
+        self.torque_limit = 28
+        self.back_time = 100
+        self.back_position = None
+        self.position_limit_up = [0.8, 4.18, -0.91] * 4
+        self.position_limit_down = [-0.8, -1.04, -2.69] * 4
+
+        self.cmd = sdk.LowCmd()
+        self.state = sdk.LowState()
+        self.udp.InitCmdData(self.cmd)
 
         self.motiontime = 0
-
-        self.kp = [0 for i in range(self.act_dims)]
-        self.kd = [0 for i in range(self.act_dims)]
+        self.stand_gait = [0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3]
+        self.kp = [180 for i in range(self.act_dims)]
+        self.kd = [8 for i in range(self.act_dims)]
         self.quaternion = [1, 0, 0, 0]
         self.gyroscope = [0, 0, 0]
         self.accelerometer = [0, 0, 0]
         self.position = [0 for i in range(self.act_dims)]
         self.velocity = [0 for i in range(self.act_dims)]
+
         # self.quaternion = Qauternion(1, 0, 0, 0)
 
-    def init_motor(self):
+    def init_motor(self, position):
         """
         init motor kp and kd
         :return:
         """
+        self.observe()
+        self.connection_init()
+        if self.back_position is None:
+            self.back_position = self.position.copy()
         for i in range(12):
             motor = self.__motor(i)
+            motor.mode = 10
             motor.tau = 0
-            motor.q = 0
+            # motor.q = self.stand_gait[i]
             motor.dq = 0
         self.init_k(self.kp, self.kd)
-
-        self.take_action(self.position)
+        print('You kp are', self.kp)
+        print('You kd are', self.kd)
+        print('your now position is', self.position)
+        input('Are you sure to start?')
+        self.take_action(position)
         print('self.motor inited')
 
     def __motor(self,i):
@@ -69,7 +86,7 @@ class Robot():
         :param i: index
         :return:  motor[i]
         """
-        return self.__cmd.motorCmd[i]
+        return self.cmd.motorCmd[i]
 
     def connect(self):
         """
@@ -91,6 +108,20 @@ class Robot():
         """
         return True
 
+    @only_run_once
+    def connection_init(self):
+        tmp = 0
+        while self.observe().sum() == 0 and tmp <= 10:
+            tmp += 1
+            self.udp.Recv()
+            self.udp.GetRecv(self.state)
+            self.udp.SetSend(self.cmd)
+            self.udp.Send()
+        if self.observe().sum() == 0:
+            raise ConnectionError("Cannot read info of robot.")
+        else:
+            return True
+
     def observe(self) -> np.array:
         """
         get the info data from sensor using  imu and posi-sensor
@@ -102,8 +133,11 @@ class Robot():
         5. velocity
         :return: np.array([1, self.ob_dims])
         """
+        time.sleep(self.dt)
+        self.connection_init()
+        # state = sdk.LowState()
         self.udp.Recv()
-        self.udp.GetRecv(self.__state)
+        self.udp.GetRecv(self.state)
 
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
@@ -117,9 +151,9 @@ class Robot():
         todo test the quaternion
         :return:
         """
-        self.quaternion = self.__state.imu.quaternion
-        self.gyroscope = self.__state.imu.gyroscope
-        self.accelerometer = self.__state.imu.accelerometer
+        self.quaternion = self.state.imu.quaternion
+        self.gyroscope = self.state.imu.gyroscope
+        self.accelerometer = self.state.imu.accelerometer
         return True
 
     def get_motion(self):
@@ -137,14 +171,14 @@ class Robot():
         :param i: which motor velocity to get
         :return:
         """
-        self.velocity[i] = self.__state.motorState[i].dq
+        self.velocity[i] = self.state.motorState[i].dq
 
     def get_position(self, i):
         """
         :param i: which motor position to get
         :return:
         """
-        self.position[i] = self.__state.motorState[i].q
+        self.position[i] = self.state.motorState[i].q
 
     def take_action(self, position, dq=None):
         """
@@ -156,7 +190,16 @@ class Robot():
             raise TypeError("Please input a standard position list into the take_action function")
         if len(position) != self.act_dims:
             raise Exception("position must have the same length with self.act_dims")
-        time.sleep(self.dt)
+        self.safe.PowerProtect(self.cmd, self.state, 1)
+        self.motiontime += 1
+        # print(self.motiontime)
+
+        # if self.motiontime
+        # time.sleep(self.dt)
+        # print('Position going to exec:', position)
+        # print('Kp:', self.kp)
+        # print('kd:', self.kd)
+        # input('Are you sure to go on?')
         assert len(position) == self.act_dims
         # if dq == None:
         #     dq = [0 for i in range(self.act_dims)]
@@ -165,8 +208,9 @@ class Robot():
             self.__motor(i).q = position[i]
             if dq is not None:
                 self.__motor(i).dq = dq[i]
-
-        self.udp.SetSend(self.__cmd)
+            self.torq_limit(self.__motor(i), i)
+            self.posi_limit(self.__motor(i), i)
+        self.udp.SetSend(self.cmd)
         self.udp.Send()
 
     def reset(self):
@@ -187,6 +231,7 @@ class Robot():
         for i in range(self.act_dim()):
             self.__motor(i).Kp = self.kp[i]
             self.__motor(i).Kd = self.kd[i]
+
         print('init motors\' kp and kd finished')
 
     def safe_protect(self):
@@ -194,6 +239,55 @@ class Robot():
         using self.safe to protect the power
         :return:
         """
-        self.safe.PowerProtect(self.__cmd, self.__state, 1)
+        self.safe.PowerProtect(self.cmd, self.state, 1)
 
+    @only_run_once
+    def pre_hold(self):
+        print('Now hold on')
+        self.hold_posi = self.position.copy()
 
+    def hold_on(self):
+        self.observe()
+        self.pre_hold()
+        # print(self.hold_posi)
+        self.take_action(self.hold_posi)
+
+    def posi_limit(self, motor, i):
+        if motor.q >= self.position_limit_up[i] or motor.q <= self.position_limit_down[i]:
+            raise ValueError(
+                f"""motor {i} position {motor.q} has been over the position limit ({self.position_limit_up[i]},{self.position_limit_down[i]}).Close the process
+                    position: {self.position}
+                    imu: {self.quaternion, self.gyroscope, self.accelerometer}
+                    kp: {self.kp}
+                    kd: {self.kd}
+                """)
+
+    def torq_limit(self, motor, i):
+        if motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i]) > self.torque_limit:
+            raise ValueError(f"""motor {i}'s torque {motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i])} has been over the limit {self.torque_limit}, Close the process'
+                    tor_info: {motor.tau, motor.q, self.position[i]}
+                    position: {self.position}
+                    imu: {self.quaternion, self.gyroscope, self.accelerometer}
+                    kp: {self.kp}
+                    kd: {self.kd}
+                                """)
+
+    def line_interpolating(self, begin, end, idx, rate):
+        if isinstance(begin, list):
+            assert isinstance(end, list)
+            ans = []
+            for b, e in zip(begin, end):
+                ans.append(self.line_interpolating(b, e, idx, rate))
+            return ans
+        return end * idx / rate + (1 - idx / rate) * begin
+
+    @only_run_once
+    def record_posi(self):
+        self.record_position = self.position.copy()
+
+    def back_safe(self):
+        print('Robot is going back to safe position')
+        self.record_posi()
+        for i in range(self.back_time):
+            self.observe()
+            self.take_action(self.line_interpolating(self.record_position, self.back_position, i, self.back_time))

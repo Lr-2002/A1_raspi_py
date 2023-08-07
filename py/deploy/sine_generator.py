@@ -1,9 +1,10 @@
 from math import sin,pi
 
-def sine_generator(angle_list, idx, T, rate=1):
-    base1= 0.82
+def sine_generator(idx, T, rate=1):
+    angle_list = [0 for i in range(12)]
+    base1= 0.67
     base3= 0.0
-    base2 = -2 * base1
+    base2 = -1.3
     ang = abs(sin( float(idx) / T  * pi)) * rate
 
     idx_base = 0
