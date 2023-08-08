@@ -31,7 +31,7 @@ class Robot():
         self.act_dims = 12 # todo
         self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
         self.udp_state = sdk.UDPState()
-        self.dt = 0.01
+        self.dt = 0.005
 
         #safety
         self.safe = sdk.Safety(self.robot)
@@ -142,6 +142,18 @@ class Robot():
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
         info = self.quaternion + self.gyroscope + self.accelerometer + self.position + self.velocity
+        """
+        obs:
+            1. self.quaternion     四元数 右手系,x-aix沿着头的正方向,z-up w,x,y,z 
+            2. self.gyroscope      陀螺仪       角速度： rad/s
+            3. self.accelerometer  加速度计     线加速度: m/s^2
+            4. self.position       关节角位置   12个关节的角位置: rad
+            5. self.velocity       关节角速度   12个关节的角速度: rad/s
+        add-on：
+            1. 12个关节的顺序: FR, FL, RR, RL
+        """
+
+
 
         return np.array(info).astype(np.float32)
 

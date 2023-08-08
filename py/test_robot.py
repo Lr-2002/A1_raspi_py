@@ -44,6 +44,7 @@ if __name__=='__main__':
     # obs = a1.observe()
     # print(obs)
     act = a1.position
+    # a1.dt = 0.3
     print(act)
     # print(a1.position_limit_up, a1.position_limit_down)
 
@@ -53,18 +54,24 @@ if __name__=='__main__':
     # make action
     # start_list = [-0.1552944779396057, 1.226299524307251, -2.127218246459961, 0.5057500600814819, 1.378053903579712, -2.6986260414123535, -0.14581245183944702, 1.3590056896209717, -2.6817691326141357, -0.4573284983634949, 1.2668824195861816, -2.6768805980682373]
     # e = [0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3]
-    e = act.copy()
-    e[2] = -2
-    T = 500
+
+    #
+    e = a1.stand_gait
+    # e[2] = -1.67
+    # e[5] = -1.67
+    # e[8] = -1.67
+    # e[11] = -1.67
+    T = 300
     # a1.dt = 0.3
+    input('e is {}'.format(e))
     for idx in range(T):
         # print(len(generate_line_begin_end(act, e, idx, T)))
         a1.observe()
         a1.take_action(generate_line_begin_end(act, e, idx, T))
 
-    sine_T = 80
-    # ang_list = a1.stand_gait.copy()
-    for idx in range(sine_T  * 10):
+    sine_T = 100
+    ang_list = a1.stand_gait.copy()
+    for idx in range(sine_T * 10):
         a1.observe()
         a1.take_action(sine_generator(idx, sine_T, 0.15))
 
