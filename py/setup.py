@@ -8,5 +8,8 @@ setup(
     author_email="2629651228@qq.com",
     url="https://github.com/Lr-2002/A1_raspi_py",
     packages=find_packages(),
+    package_data={
+        'unitree_api':['*.so'],
+    }
 
 )
