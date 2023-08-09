@@ -1,7 +1,7 @@
 import numpy as np
 import sys
 sys.path.append('../')
-import api.robot_interface as sdk
+import unitree_api.robot_interface as sdk
 import time
 import math
 from utils.one_call import only_run_once

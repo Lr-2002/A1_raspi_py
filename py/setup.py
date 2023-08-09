@@ -1,7 +1,7 @@
 from setuptools import  setup, find_packages
 
 setup(
-    name="a1_py",
+    name="unitree",
     version="1.0",
     description="install to site-packages",
     author="Lr-2002",

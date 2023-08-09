@@ -1,5 +1,5 @@
-import api.robot as rbt
-from utils.signal_hand import quit_robot
+import unitree_api.robot as rbt
+from unitree_utils.signal_hand import quit_robot
 import signal
 
 

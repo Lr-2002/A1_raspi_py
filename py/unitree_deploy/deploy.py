@@ -5,7 +5,7 @@ import numpy as np
 import time
 import os
 from ruamel.yaml import YAML
-from api.robot import Robot
+from unitree_api.robot import Robot
 import torch.nn as nn
 from sine_generator import sine_generator
 

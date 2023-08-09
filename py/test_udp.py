@@ -5,7 +5,7 @@ import math
 import numpy as np
 
 sys.path.append('./')
-import api.robot_interface as sdk
+import unitree_api.robot_interface as sdk
 
 
 def jointLinearInterpolation(initPos, targetPos, rate):

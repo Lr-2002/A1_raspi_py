@@ -1,11 +1,11 @@
-import api.robot as rbt
+import unitree_api.robot as rbt
 import numpy as np
 import time
 # init the robot
 import signal
 from utils.signal_hand import quit_robot
 import sys
-from deploy.sine_generator import sine_generator
+from unitree_deploy.sine_generator import sine_generator
 
 a1 = rbt.Robot()
 
