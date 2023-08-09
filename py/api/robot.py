@@ -1,4 +1,6 @@
 import numpy as np
+import sys
+sys.path.append('../')
 import api.robot_interface as sdk
 import time
 import math
@@ -303,3 +305,12 @@ class Robot():
         for i in range(self.back_time):
             self.observe()
             self.take_action(self.line_interpolating(self.record_position, self.back_position, i, self.back_time))
+
+    def go_position(self, position, timing):
+        print('Robot is going to destination {}'.format(position))
+        ori_posi = self.position.copy()
+        for i in range(timing):
+            self.observe()
+            self.take_action(self.line_interpolating(ori_posi, position, i, timing))
+        print('Robot has been the destination {}'.format(position))
+        return True
