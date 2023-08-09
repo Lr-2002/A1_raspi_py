@@ -3,7 +3,7 @@ import numpy as np
 import time
 # init the robot
 import signal
-from utils.signal_hand import quit_robot
+from unitree_utils.signal_hand import quit_robot
 import sys
 from unitree_deploy.sine_generator import sine_generator
 
@@ -26,6 +26,7 @@ def generate_line_begin_end(begin, end, idx, rate):
 
 
 
+# def safe_protect(robot):
 def signal_handler(signal, frame):
     print('You pressed Ctrl+C!')
     quit_robot(a1)

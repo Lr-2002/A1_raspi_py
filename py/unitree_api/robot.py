@@ -48,7 +48,7 @@ class Robot():
         self.udp.InitCmdData(self.cmd)
 
         self.motiontime = 0
-        self.stand_gait = [0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3]
+        self.stand_gait = [0, 0.523, -1.046] * 4
         self.kp = [180 for i in range(self.act_dims)]
         self.kd = [8 for i in range(self.act_dims)]
         self.quaternion = [1, 0, 0, 0]
@@ -113,13 +113,13 @@ class Robot():
     @only_run_once
     def connection_init(self):
         tmp = 0
-        while self.observe().sum() == 0 and tmp <= 10:
+        while abs(self.observe().sum() - 9.81) <= 0.02 and tmp <= 10:
             tmp += 1
             self.udp.Recv()
             self.udp.GetRecv(self.state)
             self.udp.SetSend(self.cmd)
             self.udp.Send()
-        if self.observe().sum() == 0:
+        if abs(self.observe().sum() - 9.81) <= 0.02:
             raise ConnectionError("Cannot read info of robot.")
         else:
             return True
@@ -143,7 +143,13 @@ class Robot():
 
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
-        info = self.quaternion + self.gyroscope + self.accelerometer + self.position + self.velocity
+        info = self.quaternion + self.gyroscope + self.accelerometer
+        for i in range(12):
+            info.append(self.position[i])
+            info.append(self.velocity[i])
+
+
+
         """
         obs:
             1. self.quaternion     四元数 右手系,x-aix沿着头的正方向,z-up w,x,y,z 
@@ -168,6 +174,7 @@ class Robot():
         self.quaternion = self.state.imu.quaternion
         self.gyroscope = self.state.imu.gyroscope
         self.accelerometer = self.state.imu.accelerometer
+        self.accelerometer[2] -= 9.81
         return True
 
     def get_motion(self):

@@ -2,9 +2,9 @@ from math import sin,pi
 import numpy as np
 def sine_generator(idx, T, rate=1):
     if isinstance(idx, int):
-        base1= 0.4
+        base1= 0.5233
         base3= 0.0
-        base2 = -0.8529411764705883
+        base2 = -2 * base1
         ang = abs(sin( float(idx) / T  * pi)) * rate
         angle_list = [0] * 12
         idx_base = 0
@@ -35,7 +35,7 @@ def sine_generator(idx, T, rate=1):
         angle_list[idx_base+3] = base3
         angle_list[idx_base+6] = base3
         angle_list[idx_base+9] = base3
-        return angle_list
+        return np.array(angle_list)
     else:
         # tmp = []
         tmp=  [sine_generator(x, T, rate) for x in idx]
@@ -44,7 +44,7 @@ def sine_generator(idx, T, rate=1):
 
 if __name__=='__main__':
     # angle_list = [[0 for x in range(12)] for z in range(3)]
-    idx = [3, 2, 4]
+    idx = [3]
     angle_list = sine_generator(idx, 40, 0.3)
     print(angle_list)
     print(angle_list.shape)
