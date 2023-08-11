@@ -4,7 +4,8 @@ sys.path.append('../')
 import unitree_api.robot_interface as sdk
 import time
 import math
-from utils.one_call import only_run_once
+from unitree_utils.one_call import only_run_once
+from unitree_utils.Waiter import Waiter, get_ms_in_s
 from collections import namedtuple
 
 d = {'FR_0': 0, 'FR_1': 1, 'FR_2': 2,
@@ -33,11 +34,11 @@ class Robot():
         self.act_dims = 12 # todo
         self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
         self.udp_state = sdk.UDPState()
-        self.dt = 0.005
-
+        self.dt = 0.01
+        self.waiter = Waiter(self.dt)
         #safety
         self.safe = sdk.Safety(self.robot)
-        self.torque_limit = 28
+        self.torque_limit = 30
         self.back_time = 100
         self.back_position = None
         self.position_limit_up = [0.8, 4.18, -0.91] * 4
@@ -49,8 +50,8 @@ class Robot():
 
         self.motiontime = 0
         self.stand_gait = [0, 0.523, -1.046] * 4
-        self.kp = [180 for i in range(self.act_dims)]
-        self.kd = [8 for i in range(self.act_dims)]
+        self.kp = [180, 180, 300] * 4
+        self.kd = [8, 8, 15] * 4
         self.quaternion = [1, 0, 0, 0]
         self.gyroscope = [0, 0, 0]
         self.accelerometer = [0, 0, 0]
@@ -58,6 +59,10 @@ class Robot():
         self.velocity = [0 for i in range(self.act_dims)]
 
         # self.quaternion = Qauternion(1, 0, 0, 0)
+
+    def update_dt(self, dt):
+        self.dt = dt
+        self.waiter = Waiter(dt)
 
     def init_motor(self, position):
         """
@@ -81,6 +86,13 @@ class Robot():
         input('Are you sure to start?')
         self.take_action(position)
         print('self.motor inited')
+
+    def quit_robot(self):
+        # self.waiter.kill()
+        self.back_safe()
+
+        print('Task finished')
+        sys.exit(0)
 
     def __motor(self,i):
         """
@@ -113,13 +125,13 @@ class Robot():
     @only_run_once
     def connection_init(self):
         tmp = 0
-        while abs(self.observe().sum() - 9.81) <= 0.02 and tmp <= 10:
+        while abs(self.observe().sum()) <= 0.02 and tmp <= 10:
             tmp += 1
             self.udp.Recv()
             self.udp.GetRecv(self.state)
             self.udp.SetSend(self.cmd)
             self.udp.Send()
-        if abs(self.observe().sum() - 9.81) <= 0.02:
+        if abs(self.observe().sum()) <= 0.02:
             raise ConnectionError("Cannot read info of robot.")
         else:
             return True
@@ -135,7 +147,7 @@ class Robot():
         5. velocity
         :return: np.array([1, self.ob_dims])
         """
-        time.sleep(self.dt)
+        # time.sleep(self.dt)
         self.connection_init()
         # state = sdk.LowState()
         self.udp.Recv()
@@ -143,7 +155,7 @@ class Robot():
 
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
-        info = self.quaternion + self.gyroscope + self.accelerometer
+        info = self.quaternion + self.gyroscope
         for i in range(12):
             info.append(self.position[i])
             info.append(self.velocity[i])
@@ -224,13 +236,17 @@ class Robot():
         assert len(position) == self.act_dims
         # if dq == None:
         #     dq = [0 for i in range(self.act_dims)]
-
         for i in range(self.act_dims):
             self.__motor(i).q = position[i]
             if dq is not None:
                 self.__motor(i).dq = dq[i]
             self.torq_limit(self.__motor(i), i)
             self.posi_limit(self.__motor(i), i)
+        if self.waiter.is_inited():
+            self.waiter.wait()
+        else:
+            self.waiter.update_start()
+        print(get_ms_in_s())
         self.udp.SetSend(self.cmd)
         self.udp.Send()
 
@@ -286,7 +302,7 @@ class Robot():
     def torq_limit(self, motor, i):
         if motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i]) > self.torque_limit:
             raise ValueError(f"""motor {i}'s torque {motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i])} has been over the limit {self.torque_limit}, Close the process'
-                    tor_info: {motor.tau, motor.q, self.position[i]}
+                    tor_info(tau, target, now_posi): {motor.tau, motor.q, self.position[i]}
                     position: {self.position}
                     imu: {self.quaternion, self.gyroscope, self.accelerometer}
                     kp: {self.kp}

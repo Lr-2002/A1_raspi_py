@@ -3,7 +3,6 @@ import numpy as np
 import time
 # init the robot
 import signal
-from unitree_utils.signal_hand import quit_robot
 import sys
 from unitree_deploy.sine_generator import sine_generator
 
@@ -29,7 +28,7 @@ def generate_line_begin_end(begin, end, idx, rate):
 # def safe_protect(robot):
 def signal_handler(signal, frame):
     print('You pressed Ctrl+C!')
-    quit_robot(a1)
+    a1.quit_robot()
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -42,7 +41,7 @@ if __name__=='__main__':
 
     # init robot p-d coefficient
 
-    # obs = a1.observe()
+    obs = a1.observe()
     # print(obs)
     act = a1.position
     # a1.dt = 0.3
@@ -65,6 +64,7 @@ if __name__=='__main__':
     T = 300
     # a1.dt = 0.3
     input('e is {}'.format(e))
+    a1.update_dt(0.01)
     for idx in range(T):
         # print(len(generate_line_begin_end(act, e, idx, T)))
         a1.observe()
@@ -74,7 +74,7 @@ if __name__=='__main__':
     ang_list = a1.stand_gait.copy()
     for idx in range(sine_T * 10):
         a1.observe()
-        a1.take_action(sine_generator(idx, sine_T, 0.15))
+        a1.take_action(sine_generator(idx, sine_T, 0.15).tolist())
 
     while True:
         a1.hold_on()
