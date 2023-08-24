@@ -3,11 +3,13 @@ import sys
 sys.path.append('../')
 import unitree_api.robot_interface as sdk
 import time
+
 import math
 from unitree_utils.one_call import only_run_once
 from unitree_utils.Waiter import Waiter, get_ms_in_s
+from unitree_deploy.angle_utils import quart_to_rpy
 from collections import namedtuple
-
+from unitree_api.filter.a1_robot_velocity_estimator import VelocityEstimator
 d = {'FR_0': 0, 'FR_1': 1, 'FR_2': 2,
      'FL_0': 3, 'FL_1': 4, 'FL_2': 5,
      'RR_0': 6, 'RR_1': 7, 'RR_2': 8,
@@ -16,6 +18,80 @@ PosStopF = math.pow(10, 9)
 VelStopF = 16000.0
 HIGHLEVEL = 0xee
 LOWLEVEL = 0xff
+
+
+def analytical_leg_jacobian(leg_angles, leg_id):
+    """
+  Computes the analytical Jacobian.
+  Args:
+  ` leg_angles: a list of 3 numbers for current abduction, hip and knee angle.
+    l_hip_sign: whether it's a left (1) or right(-1) leg.
+  """
+    l_up = 0.2
+    l_low = 0.2
+    l_hip = 0.08505 * (-1)**(leg_id + 1)
+
+    t1, t2, t3 = leg_angles[0], leg_angles[1], leg_angles[2]
+    l_eff = np.sqrt(l_up**2 + l_low**2 + 2 * l_up * l_low * np.cos(t3))
+    t_eff = t2 + t3 / 2
+    J = np.zeros((3, 3))
+    J[0, 0] = 0
+    J[0, 1] = -l_eff * np.cos(t_eff)
+    J[0, 2] = l_low * l_up * np.sin(t3) * np.sin(
+        t_eff) / l_eff - l_eff * np.cos(t_eff) / 2
+    J[1, 0] = -l_hip * np.sin(t1) + l_eff * np.cos(t1) * np.cos(t_eff)
+    J[1, 1] = -l_eff * np.sin(t1) * np.sin(t_eff)
+    J[1, 2] = -l_low * l_up * np.sin(t1) * np.sin(t3) * np.cos(
+        t_eff) / l_eff - l_eff * np.sin(t1) * np.sin(t_eff) / 2
+    J[2, 0] = l_hip * np.cos(t1) + l_eff * np.sin(t1) * np.cos(t_eff)
+    J[2, 1] = l_eff * np.sin(t_eff) * np.cos(t1)
+    J[2, 2] = l_low * l_up * np.sin(t3) * np.cos(t1) * np.cos(
+        t_eff) / l_eff + l_eff * np.sin(t_eff) * np.cos(t1) / 2
+    return J
+
+
+
+def quaternion_rotation_matrix(Q):
+    """
+    Covert a quaternion into a full three-dimensional rotation matrix.
+
+    Input
+    :param Q: A 4 element array representing the quaternion (q0,q1,q2,q3)
+
+    Output
+    :return: A 3x3 element matrix representing the full 3D rotation matrix.
+             This rotation matrix converts a point in the local reference
+             frame to a point in the global reference frame.
+    """
+    # Extract the values from Q
+    q0 = Q[0]
+    q1 = Q[1]
+    q2 = Q[2]
+    q3 = Q[3]
+
+    # First row of the rotation matrix
+    r00 = 2 * (q0 * q0 + q1 * q1) - 1
+    r01 = 2 * (q1 * q2 - q0 * q3)
+    r02 = 2 * (q1 * q3 + q0 * q2)
+
+    # Second row of the rotation matrix
+    r10 = 2 * (q1 * q2 + q0 * q3)
+    r11 = 2 * (q0 * q0 + q2 * q2) - 1
+    r12 = 2 * (q2 * q3 - q0 * q1)
+
+    # Third row of the rotation matrix
+    r20 = 2 * (q1 * q3 - q0 * q2)
+    r21 = 2 * (q2 * q3 + q0 * q1)
+    r22 = 2 * (q0 * q0 + q3 * q3) - 1
+
+    # 3x3 rotation matrix
+    rot_matrix = np.array([[r00, r01, r02],
+                           [r10, r11, r12],
+                           [r20, r21, r22]])
+
+    return rot_matrix
+
+
 
 class Qauternion:
     def __init__(self, w, x, y, z):
@@ -30,7 +106,7 @@ class Qauternion:
 class Robot():
     def __init__(self):
         self.robot = sdk.LeggedType.A1
-        self.ob_dims = 34 # todo make function
+        self.ob_dims = 32 # todo make function
         self.act_dims = 12 # todo
         self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
         self.udp_state = sdk.UDPState()
@@ -42,7 +118,7 @@ class Robot():
         self.back_time = 100
         self.back_position = None
         self.position_limit_up = [0.8, 4.18, -0.91] * 4
-        self.position_limit_down = [-0.8, -1.04, -2.69] * 4
+        self.position_limit_down = [-0.8, -1.04, -2.74] * 4
 
         self.cmd = sdk.LowCmd()
         self.state = sdk.LowState()
@@ -54,9 +130,16 @@ class Robot():
         self.kd = [8, 8, 15] * 4
         self.quaternion = [1, 0, 0, 0]
         self.gyroscope = [0, 0, 0]
+        self.est_vel = [0, 0, 0]
+        self.euler = None
         self.accelerometer = [0, 0, 0]
         self.position = [0 for i in range(self.act_dims)]
         self.velocity = [0 for i in range(self.act_dims)]
+        self.tau = [0]  * self.act_dims
+
+        self.contact_bias = None
+
+        self.vel_estimator = VelocityEstimator(self)
 
         # self.quaternion = Qauternion(1, 0, 0, 0)
 
@@ -92,7 +175,7 @@ class Robot():
         self.back_safe()
 
         print('Task finished')
-        sys.exit(0)
+        # sys.exit(0)
 
     def __motor(self,i):
         """
@@ -122,16 +205,18 @@ class Robot():
         """
         return True
 
+
     @only_run_once
     def connection_init(self):
         tmp = 0
-        while abs(self.observe().sum()) <= 0.02 and tmp <= 10:
+        # print(self.observe())
+        while abs(self.observe().sum() ) <= 0.02 and tmp <= 10:
             tmp += 1
             self.udp.Recv()
             self.udp.GetRecv(self.state)
             self.udp.SetSend(self.cmd)
             self.udp.Send()
-        if abs(self.observe().sum()) <= 0.02:
+        if abs(self.observe().sum() ) <= 0.02:
             raise ConnectionError("Cannot read info of robot.")
         else:
             return True
@@ -155,11 +240,18 @@ class Robot():
 
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
-        info = self.quaternion + self.gyroscope
+        info = []
+        tmp =quart_to_rpy(self.quaternion)[0:2]
+        if self.contact_bias is not None:
+            self.get_body_vel()
+            print("est vel", self.est_vel, " \n",self.accelerometer)
+        # print( "compare angle : ", quart_to_rpy(self.quaternion) , "the other one ", self.euler)
+        info = [tmp[0] ,tmp[1]]  + self.gyroscope + self.accelerometer  # todo change the order
+        # info = [tmp[0] ,tmp[1]]     # todo change the order
         for i in range(12):
             info.append(self.position[i])
             info.append(self.velocity[i])
-
+        # info.append(0)
 
 
         """
@@ -175,7 +267,7 @@ class Robot():
 
 
 
-        return np.array(info).astype(np.float32)
+        return np.array([info]).astype(np.float32)
 
     def get_imu(self):
         """
@@ -185,8 +277,14 @@ class Robot():
         """
         self.quaternion = self.state.imu.quaternion
         self.gyroscope = self.state.imu.gyroscope
+        self.euler = self.state.imu.rpy
         self.accelerometer = self.state.imu.accelerometer
-        self.accelerometer[2] -= 9.81
+        # self.accelerometer[2] -= 9.81
+
+        # self.est_vel[0] = self.est_vel[0] + self.dt*self.accelerometer[0]
+        # self.est_vel[1] = self.est_vel[1] + self.dt*self.accelerometer[1]
+        # self.est_vel[2] = self.est_vel[2] + self.dt*self.accelerometer[2]
+
         return True
 
     def get_motion(self):
@@ -197,7 +295,18 @@ class Robot():
         for i in range(self.act_dims):
             self.get_position(i)
             self.get_velocity(i)
+            self.get_tau(i)
         return True
+
+
+
+    def get_tau(self, i):
+        """
+        :param i: which motor tau to get
+        :return: tau
+        """
+        self.tau[i] = self.state.motorState[i].tauEst
+
 
     def get_velocity(self, i):
         """
@@ -246,7 +355,7 @@ class Robot():
             self.waiter.wait()
         else:
             self.waiter.update_start()
-        print(get_ms_in_s())
+        # print(get_ms_in_s())
         self.udp.SetSend(self.cmd)
         self.udp.Send()
 
@@ -289,6 +398,13 @@ class Robot():
         # print(self.hold_posi)
         self.take_action(self.hold_posi)
 
+    def check_angle_safe(self):
+        if abs(self.euler[1]) >= 0.4 or abs(self.euler[0] ) >= 0.4:
+            print('euler wrong')
+            self.quit_robot()
+            sys.exit(0)
+
+
     def posi_limit(self, motor, i):
         if motor.q >= self.position_limit_up[i] or motor.q <= self.position_limit_down[i]:
             raise ValueError(
@@ -308,6 +424,8 @@ class Robot():
                     kp: {self.kp}
                     kd: {self.kd}
                                 """)
+
+        # print(f"est tau {i}: ", motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i]))
 
     def line_interpolating(self, begin, end, idx, rate):
         if isinstance(begin, list):
@@ -332,8 +450,66 @@ class Robot():
     def go_position(self, position, timing):
         print('Robot is going to destination {}'.format(position))
         ori_posi = self.position.copy()
+
         for i in range(timing):
             self.observe()
             self.take_action(self.line_interpolating(ori_posi, position, i, timing))
         print('Robot has been the destination {}'.format(position))
         return True
+
+    def ComputeJacobian(self, leg_id):
+        """Compute the Jacobian for a given leg."""
+        # Does not work for Minitaur which has the four bar mechanism for now.
+        motor_angles = self.position[leg_id * 3:(leg_id + 1) * 3]
+        return analytical_leg_jacobian(motor_angles, leg_id)
+
+    def GetBaseAcceleration(self):
+        return self.accelerometer
+
+
+    def GetBaseOrientation(self):
+        return self.quaternion
+
+    def from_quaternion_to_rot(self):
+        return quaternion_rotation_matrix(self.quaternion)
+
+    def GetMotorVelocities(self):
+        return self.position
+
+    def GetFootContacts(self):
+        if self.contact_bias is not None:
+            return [1 if self.GetFootForce()[i] >self.contact_bias[i]  else 0 for i in range(4)]
+        else:
+            return  None
+
+    def GetFootForce(self):
+        return self.state.footForce
+
+    def GetFootForceEst(self):
+        return self.state.footForceEst
+
+
+    def stand_up(self, timer):
+        self.observe()
+        self.init_motor(self.position)
+        ori_posi = self.position.copy()
+        for idx in range(timer):
+            # print(len(generate_line_begin_end(act, e, idx, T)))
+            self.observe()
+            print("upping ", self.position)
+            # print("tau from state: ", a1.tau)
+            self.take_action(self.line_interpolating(ori_posi, self.stand_gait, idx, timer))
+        contact = []
+        for i in range(100):
+            self.observe()
+            contact.append(self.GetFootForce())
+            self.hold_on()
+        self.contact_bias = np.array(contact).mean(0)
+
+    def get_body_vel(self):
+        # self.vel_est.update()
+        self.vel_estimator.update(self.state.tick / 1000)
+        self.est_vel = self.vel_estimator.estimated_velocity.copy()
+        return self.est_vel
+
+

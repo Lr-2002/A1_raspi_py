@@ -4,8 +4,8 @@ import time
 # init the robot
 import signal
 import sys
-from unitree_deploy.sine_generator import sine_generator
-
+from unitree_deploy.angle_utils import sine_generator
+# from raisimGymTorch.deploy_log.draw_map import Drawer
 a1 = rbt.Robot()
 
 
@@ -29,6 +29,9 @@ def generate_line_begin_end(begin, end, idx, rate):
 def signal_handler(signal, frame):
     print('You pressed Ctrl+C!')
     a1.quit_robot()
+    # debug_draw_gry.draw()
+    sys.exit(0)
+
 
 signal.signal(signal.SIGINT, signal_handler)
 
@@ -37,18 +40,22 @@ signal.signal(signal.SIGINT, signal_handler)
 
 
 if __name__=='__main__':
-
+    # debug_draw_gry = Drawer("debug_draw_angular_vel")
 
     # init robot p-d coefficient
 
-    obs = a1.observe()
+    # obs = a1.observe()
     # print(obs)
-    act = a1.position
+    # print("tau est: ", a1.tau)
+    # act = a1.position
     # a1.dt = 0.3
-    print(act)
+    # print(act)
     # print(a1.position_limit_up, a1.position_limit_down)
+    a1.kp = [150] * 12
+    a1.kd = [7] * 12
+    a1.torque_limit=31
 
-    a1.init_motor(act)
+    a1.stand_up(400)
     # observe
 
     # make action
@@ -56,25 +63,48 @@ if __name__=='__main__':
     # e = [0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3, 0, 0.67, -1.3]
 
     #
-    e = a1.stand_gait
+    # e = a1.stand_gait
     # e[2] = -1.67
     # e[5] = -1.67
     # e[8] = -1.67
     # e[11] = -1.67
-    T = 300
+    # T = 400
+
     # a1.dt = 0.3
-    input('e is {}'.format(e))
-    a1.update_dt(0.01)
-    for idx in range(T):
-        # print(len(generate_line_begin_end(act, e, idx, T)))
-        a1.observe()
-        a1.take_action(generate_line_begin_end(act, e, idx, T))
-
-    sine_T = 100
-    ang_list = a1.stand_gait.copy()
-    for idx in range(sine_T * 10):
-        a1.observe()
-        a1.take_action(sine_generator(idx, sine_T, 0.15).tolist())
-
+    # input('e is {}'.format(e))
+    # a1.update_dt(0.01)
+    # for idx in range(T):
+    #     print(len(generate_line_begin_end(act, e, idx, T)))
+        # a1.observe()
+        # print("upping ", a1.position)
+        # print("tau from state: ", a1.tau)
+        # a1.take_action(generate_line_begin_end(act, e, idx, T))
+    # contact = []
+    # for i in range(100):
+    #     a1.observe()
+    #     contact.append(a1.GetFootForce())
+    #     a1.hold_on()
+    # contact = np.array(contact).mean(0)
+    # print('averate contact is ', contact)
+    # a1.kp = [60, 40, 80] * 4
+    # a1.kd = [5, 4, 7] * 4
+    # a1.init_k(a1.kp, a1.kd)
+    # print(a1.kp, a1.kd)
+    # sine_T = 100
+    # # ang_list = a1.stand_gait.copy()
+    # for idx in range(sine_T * 10):
+    #     print(a1.observe())
+    #     print("foot force", a1.GetFootContacts())
+    #
+    #     a1.take_action(sine_generator(idx, sine_T, 0.15).tolist())
     while True:
+        a1.observe()
+
+        # print("standing ", a1.position )
+        # debug_draw_gry.add_map_list(a1.gyroscope)
         a1.hold_on()
+        # print("foot force est", a1.GetFootForceEst())
+
+    signal_handler(0, 0)
+    # print('------------------------------------------------')
+

@@ -7,7 +7,7 @@ import os
 from ruamel.yaml import YAML
 from unitree_api.robot import Robot
 import torch.nn as nn
-from sine_generator import sine_generator
+from angle_utils import sine_generator
 
 robot = Robot()
 
