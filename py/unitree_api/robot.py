@@ -54,6 +54,12 @@ def analytical_leg_jacobian(leg_angles, leg_id):
 
 
 def pyb_get(quat):
+    """
+    this function will convert your quaternion to rotmat
+    :param quat: your quaternion
+    @@order: x,y,z,w
+    :return: np.array (rot mat )
+    """
     i = 0
     d = quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] + quat[3] * quat[3]
     s = 2.0 / d
@@ -91,7 +97,13 @@ class Qauternion:
         return '{}w+{}x+{}y+{}z'.format(self.w, self.x, self.y, self.z)
 
 class Robot():
+    """
+    Robot lib here
+    """
     def __init__(self):
+        """
+        change things here
+        """
         self.robot = sdk.LeggedType.A1
         self.ob_dims = 27 # todo make function
         self.act_dims = 12 # todo
@@ -136,13 +148,19 @@ class Robot():
         # self.quaternion = Qauternion(1, 0, 0, 0
 
     def update_dt(self, dt):
+        """
+        change the time_step
+        :param dt: time_step
+        :return: None
+        """
         self.dt = dt
         self.waiter = Waiter(dt)
 
     def init_motor(self, position):
         """
         init motor kp and kd
-        :return:
+        :param position: the position you want to go (using linear lerp)
+        :return: None
         """
         self.observe()
         self.connection_init()
@@ -163,7 +181,11 @@ class Robot():
         print('self.motor inited')
 
     def quit_robot(self):
-        # self.waiter.kill()
+        """
+        call this when you need to shut down the robot manully
+        It'll kill robot using linear lerp to the original position
+        :return: None
+        """
         self.back_safe()
 
         print('Task finished')
@@ -171,31 +193,17 @@ class Robot():
 
     def __motor(self,i):
         """
-
         :param i: index
         :return:  motor[i]
         """
         return self.cmd.motorCmd[i]
-
-    def connect(self):
-        """
-        connect to A1 with high level first
-        """
-
-        pass
-
+    @property
     def ob_dim(self) -> int:
         return self.ob_dims
 
+    @property
     def act_dim(self) -> int:
         return self.act_dims
-
-    def alive(self) -> bool:
-        """
-        make sure whether the body is online?
-        :return:
-        """
-        return True
 
 
     @only_run_once
@@ -214,6 +222,10 @@ class Robot():
             return True
 
     def single_recv(self):
+        """
+        just recv without doing anything to establish connection
+        :return:
+        """
         self.udp.Recv()
         self.udp.GetRecv(self.state)
 
@@ -222,16 +234,14 @@ class Robot():
         """
         get the info data from sensor using  imu and posi-sensor
         the order is
-        1. quaternion
-        2. gyroscope
-        3. accelerometer
-        4. position
-        5. velocity
+            1. quaternion
+            2. gyroscope
+            3. accelerometer
+            4. position
+            5. velocity
         :return: np.array([1, self.ob_dims])
         """
-        # time.sleep(self.dt)
         self.connection_init()
-        # state = sdk.LowState()
         self.udp.Recv()
         self.udp.GetRecv(self.state)
 
@@ -243,10 +253,11 @@ class Robot():
         tmp =quart_to_rpy(self.quaternion)[0:2]
         if self.contact_bias is not None:
             self.get_body_vel()
-            # print("est vel", self.est_vel, " \n",self.accelerometer)
-        # print( "compare angle : ", quart_to_rpy(self.quaternion) , "the other one ", self.euler)
-        info = tmp +  self.gyroscope # todo change the order
-        # info = [tmp[0] ,tmp[1]]     # todo change the order
+        info = tmp +  self.gyroscope
+        """
+        todo:
+         change your observation here 
+        """
         for i in range(12):
             info.append(self.position[i])
             info.append(self.velocity[i])
@@ -273,24 +284,21 @@ class Robot():
     def get_imu(self):
         """
         update imu info
-        todo test the quaternion
+        z-acc is 9.81 replying to your location
         :return:
         """
         self.quaternion = self.state.imu.quaternion
         self.gyroscope = self.state.imu.gyroscope
         self.euler = self.state.imu.rpy
         self.accelerometer = self.state.imu.accelerometer
-        # self.accelerometer[2] -= 9.81
-
-        # self.est_vel[0] = self.est_vel[0] + self.dt*self.accelerometer[0]
-        # self.est_vel[1] = self.est_vel[1] + self.dt*self.accelerometer[1]
-        # self.est_vel[2] = self.est_vel[2] + self.dt*self.accelerometer[2]
 
         return True
 
     def get_motion(self):
         """
         update motion info
+        include positions,velocitys,taus
+        all of them are in the joint order
         :return:
         """
         for i in range(self.act_dims):
@@ -335,17 +343,8 @@ class Robot():
             raise Exception("position must have the same length with self.act_dims")
         self.safe.PowerProtect(self.cmd, self.state, 5)
         self.motiontime += 1
-        # print(self.motiontime)
 
-        # if self.motiontime
-        # time.sleep(self.dt)
-        # print('Position going to exec:', position)
-        # print('Kp:', self.kp)
-        # print('kd:', self.kd)
-        # input('Are you sure to go on?')
         assert len(position) == self.act_dims
-        # if dq == None:
-        #     dq = [0 for i in range(self.act_dims)]
         for i in range(self.act_dims):
             self.__motor(i).q = position[i]
             if dq is not None:
@@ -356,7 +355,6 @@ class Robot():
             self.waiter.wait()
         else:
             self.waiter.update_start()
-        # print(get_ms_in_s())
         self.udp.SetSend(self.cmd)
         with self._robot_command_lock:
             self.udp.Send()
@@ -370,13 +368,20 @@ class Robot():
 
 
     def init_k(self, kp, kd):
+        """
+        init kp and kd
+        :param kp: kp
+        :param kd: kd
+        related to the PID control
+        :return: None
+        """
         if not (isinstance(kp, list)):
             raise TypeError("Please input a standard kp and kd into the init_k function")
         if len(kp) != self.act_dims:
             raise Exception("kp and kd must have the same length with self.act_dims")
         self.kp = kp
         self.kd = kd
-        for i in range(self.act_dim()):
+        for i in range(self.act_dim):
             self.__motor(i).Kp = self.kp[i]
             self.__motor(i).Kd = self.kd[i]
 
@@ -385,7 +390,8 @@ class Robot():
     def safe_protect(self):
         """
         using self.safe to protect the power
-        :return:
+        the third is the percentage of power limit 1~10 for 10%~100%
+        :return: None
         """
         self.safe.PowerProtect(self.cmd, self.state, 1)
 
@@ -395,12 +401,22 @@ class Robot():
         self.hold_posi = self.position.copy()
 
     def hold_on(self):
+        """
+        hold on this position
+        Notice: this hold on position is only once set
+        if you need to make it external called, modify self.pre_hold() and the decorator @only_run_once
+        :return: None
+        """
         self.observe()
         self.pre_hold()
         # print(self.hold_posi)
         self.take_action(self.hold_posi)
 
     def check_angle_safe(self):
+        """
+        check whether the angle is in the safe range
+        :return:
+        """
         if abs(self.euler[1]) >= 0.4 or abs(self.euler[0] ) >= 0.4:
             print('euler wrong')
             self.__backing = True
@@ -409,6 +425,12 @@ class Robot():
 
 
     def posi_limit(self, motor, i):
+        """
+        limit the motor to the position without destroy the robot base
+        :param motor:
+        :param i:
+        :return:
+        """
         if motor.q >= self.position_limit_up[i] or motor.q <= self.position_limit_down[i]:
             raise ValueError(
                 f"""motor {i} position {motor.q} has been over the position limit ({self.position_limit_up[i]},{self.position_limit_down[i]}).Close the process
@@ -419,6 +441,13 @@ class Robot():
                 """)
 
     def torq_limit(self, motor, i):
+        """
+        limit the torque
+        if the limit is too low, using the command `robot.torque_limit` to set your new boundary
+        :param motor:
+        :param i:
+        :return:
+        """
         if motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i]) > self.torque_limit:
             raise ValueError(f"""motor {i}'s torque {motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i])} has been over the limit {self.torque_limit}, Close the process'
                     tor_info(tau, target, now_posi): {motor.tau, motor.q, self.position[i]}
@@ -431,6 +460,14 @@ class Robot():
         # print(f"est tau {i}: ", motor.tau + motor.Kp * (motor.q - self.position[i]) + motor.Kd * (motor.dq - self.velocity[i]))
 
     def line_interpolating(self, begin, end, idx, rate):
+        """
+        line lerp
+        :param begin:
+        :param end:
+        :param idx:
+        :param rate:
+        :return:
+        """
         if isinstance(begin, list):
             assert isinstance(end, list)
             ans = []
@@ -444,6 +481,10 @@ class Robot():
         self.record_position = self.position.copy()
 
     def back_safe(self):
+        """
+        back to the safe position
+        :return:
+        """
         print('Robot is going back to safe position')
         self.record_posi()
         for i in range(self.back_time):
@@ -452,6 +493,12 @@ class Robot():
             self.take_action(self.line_interpolating(self.record_position, self.back_position, i, self.back_time))
 
     def go_position(self, position, timing):
+        """
+        go to some position
+        :param position: destination
+        :param timing: how long time to go (self.dt * timing is the real time)
+        :return:
+        """
         print('Robot is going to destination {}'.format(position))
         # ori_posi = self.position.copy()
         ori_posi = [i for i in self.position]
@@ -468,39 +515,69 @@ class Robot():
         return analytical_leg_jacobian(motor_angles, leg_id)
 
     def GetBaseAcceleration(self):
+        """
+        get acc
+        :return: self.acc [x,y,z]
+        """
         return self.accelerometer
 
 
     def GetBaseOrientation(self):
+        """
+        get quat
+        :return: self.quat [w,x,y,z]
+        """
         return self.quaternion
 
     def from_quaternion_to_rot(self):
+        """
+        :return:rot mat
+        """
         return pyb_get([self.quaternion[1], self.quaternion[2], self.quaternion[3], self.quaternion[0]])
 
     def GetMotorVelocities(self):
-        return self.position
+        """
+        motor velocities
+        :return: velocity
+        """
+        return self.velocity
 
     def GetFootContacts(self):
+        """
+        if foot force bigger than 20, return 1 else 0
+        :return: [x,x,x,x] x is 0/1
+        """
         return [1 if self.GetFootForce()[i] > 20 else 0 for i in range(4)]
 
     def GetFootForce(self):
+        """
+        get foot force
+        :return: [a,b,c,d] for foot force
+        """
         return self.state.footForce
 
     def GetFootForceEst(self):
+        """
+        get estimated force
+        :return:
+        """
         return self.state.footForceEst
 
 
     def stand_up(self, timer, stand=None):
+        """
+        the robot could stand up the the position in timer and the stand is the position it'll go
+        :param timer: how long time to go
+        :param stand: the destination position
+        :return: None
+        """
         if stand is not None:
             self.stand_gait = stand
         self.observe()
         self.init_motor(self.position)
         ori_posi = self.position.copy()
         for idx in range(timer):
-            # print(len(generate_line_begin_end(act, e, idx, T)))
             self.observe()
-            # print("upping ", self.position)
-            # print("tau from state: ", a1.tau)
             self.take_action(self.line_interpolating(ori_posi, self.stand_gait, idx, timer))
         contact = []
         vel_bias = []
@@ -511,27 +588,26 @@ class Robot():
             self.hold_on()
         self.contact_bias = np.array(contact).mean(0)
         self.vel_bias = np.array(vel_bias).mean(0)
-        # print("self.vel_bias is " ,self.vel_bias)
 
     def get_body_vel(self):
-        # self.vel_est.update()
-        # self.vel_est.update()
-        # print('self.state.tick', self.state.tick)
+        """
+        using estimator to estimate the body velocity (VERY  NOT  OK)
+        :return:
+        """
         self.vel_estimator.update(self.state.tick / 1000)
         self.est_vel = self.vel_estimator.estimated_velocity.copy()
-        # self.est_vel*=
-        # self.est_vel[0] += 0.063
         if self.vel_bias is not None:
             self.est_vel -= self.vel_bias
         return self.est_vel
 
     def reset_esti(self):
-        # self.vel_estimator.reset()
+        """
+        reset the estimator which
+        deprecated
+        :return:
+        """
         self.vel_estimator = VelocityEstimator(self,accelerometer_variance= 0.03059, sensor_variance=0.006206, moving_window_filter_size=20)
 
-        # self.set_vel_bias(self.est_vel)
 
-    def set_vel_bias(self, bias):
-        self.vel_bias = bias
 
 
