@@ -65,5 +65,6 @@ class MovingWindowFilter(object):
 
         self._neumaier_sum(new_value)
         self._value_deque.append(new_value)
+        print("len " , len(self._value_deque))
 
         return (self._sum + self._correction) / self._window_size

@@ -1,3 +1,5 @@
+import threading
+
 import numpy as np
 import sys
 sys.path.append('../')
@@ -51,45 +53,30 @@ def analytical_leg_jacobian(leg_angles, leg_id):
 
 
 
-def quaternion_rotation_matrix(Q):
-    """
-    Covert a quaternion into a full three-dimensional rotation matrix.
+def pyb_get(quat):
+    i = 0
+    d = quat[0] * quat[0] + quat[1] * quat[1] + quat[2] * quat[2] + quat[3] * quat[3]
+    s = 2.0 / d
+    xs = quat[0] * s
+    ys = quat[1] * s
+    zs = quat[2] * s
+    wx = quat[3] * xs
+    wy = quat[3] * ys
+    wz = quat[3] * zs
 
-    Input
-    :param Q: A 4 element array representing the quaternion (q0,q1,q2,q3)
-
-    Output
-    :return: A 3x3 element matrix representing the full 3D rotation matrix.
-             This rotation matrix converts a point in the local reference
-             frame to a point in the global reference frame.
-    """
-    # Extract the values from Q
-    q0 = Q[0]
-    q1 = Q[1]
-    q2 = Q[2]
-    q3 = Q[3]
-
-    # First row of the rotation matrix
-    r00 = 2 * (q0 * q0 + q1 * q1) - 1
-    r01 = 2 * (q1 * q2 - q0 * q3)
-    r02 = 2 * (q1 * q3 + q0 * q2)
-
-    # Second row of the rotation matrix
-    r10 = 2 * (q1 * q2 + q0 * q3)
-    r11 = 2 * (q0 * q0 + q2 * q2) - 1
-    r12 = 2 * (q2 * q3 - q0 * q1)
-
-    # Third row of the rotation matrix
-    r20 = 2 * (q1 * q3 - q0 * q2)
-    r21 = 2 * (q2 * q3 + q0 * q1)
-    r22 = 2 * (q0 * q0 + q3 * q3) - 1
-
-    # 3x3 rotation matrix
-    rot_matrix = np.array([[r00, r01, r02],
-                           [r10, r11, r12],
-                           [r20, r21, r22]])
-
-    return rot_matrix
+    xx = quat[0] * xs
+    xy = quat[0] * ys
+    xz = quat[0] * zs
+    yy = quat[1] * ys
+    yz = quat[1] * zs
+    zz = quat[2] * zs
+    mat3x3= [
+        1.0 - (yy + zz), xy - wz, xz + wy,
+        xy + wz, 1.0 - (xx + zz), yz - wx,
+        xz - wy, yz + wx, 1.0 - (xx + yy)
+    ]
+    mat =np.array(mat3x3)
+    return mat.reshape((3,3))
 
 
 
@@ -106,7 +93,7 @@ class Qauternion:
 class Robot():
     def __init__(self):
         self.robot = sdk.LeggedType.A1
-        self.ob_dims = 32 # todo make function
+        self.ob_dims = 27 # todo make function
         self.act_dims = 12 # todo
         self.udp = sdk.UDP(LOWLEVEL, sdk.Basic)
         self.udp_state = sdk.UDPState()
@@ -137,11 +124,16 @@ class Robot():
         self.velocity = [0 for i in range(self.act_dims)]
         self.tau = [0]  * self.act_dims
 
+        self._robot_command_lock = threading.RLock()
+
         self.contact_bias = None
+        self.vel_bias = None
 
-        self.vel_estimator = VelocityEstimator(self)
+        self.vel_estimator = VelocityEstimator(self,accelerometer_variance= 0.1, sensor_variance=0.003, moving_window_filter_size=20)
 
-        # self.quaternion = Qauternion(1, 0, 0, 0)
+
+        self.__backing = False
+        # self.quaternion = Qauternion(1, 0, 0, 0
 
     def update_dt(self, dt):
         self.dt = dt
@@ -221,6 +213,11 @@ class Robot():
         else:
             return True
 
+    def single_recv(self):
+        self.udp.Recv()
+        self.udp.GetRecv(self.state)
+
+
     def observe(self) -> np.array:
         """
         get the info data from sensor using  imu and posi-sensor
@@ -240,13 +237,15 @@ class Robot():
 
         self.get_imu() # 4 + 3 + 3 = 10
         self.get_motion() # 12 * 2 = 24
+        if self.euler is not None:
+            self.check_angle_safe()
         info = []
         tmp =quart_to_rpy(self.quaternion)[0:2]
         if self.contact_bias is not None:
             self.get_body_vel()
-            print("est vel", self.est_vel, " \n",self.accelerometer)
+            # print("est vel", self.est_vel, " \n",self.accelerometer)
         # print( "compare angle : ", quart_to_rpy(self.quaternion) , "the other one ", self.euler)
-        info = [tmp[0] ,tmp[1]]  + self.gyroscope + self.accelerometer  # todo change the order
+        info = tmp +  self.gyroscope # todo change the order
         # info = [tmp[0] ,tmp[1]]     # todo change the order
         for i in range(12):
             info.append(self.position[i])
@@ -267,7 +266,9 @@ class Robot():
 
 
 
-        return np.array([info]).astype(np.float32)
+        q = np.array([info]).astype(np.float32)
+        print("obs shape", q.shape)
+        return q
 
     def get_imu(self):
         """
@@ -332,7 +333,7 @@ class Robot():
             raise TypeError("Please input a standard position list into the take_action function")
         if len(position) != self.act_dims:
             raise Exception("position must have the same length with self.act_dims")
-        self.safe.PowerProtect(self.cmd, self.state, 1)
+        self.safe.PowerProtect(self.cmd, self.state, 5)
         self.motiontime += 1
         # print(self.motiontime)
 
@@ -357,7 +358,8 @@ class Robot():
             self.waiter.update_start()
         # print(get_ms_in_s())
         self.udp.SetSend(self.cmd)
-        self.udp.Send()
+        with self._robot_command_lock:
+            self.udp.Send()
 
     def reset(self):
         """
@@ -401,6 +403,7 @@ class Robot():
     def check_angle_safe(self):
         if abs(self.euler[1]) >= 0.4 or abs(self.euler[0] ) >= 0.4:
             print('euler wrong')
+            self.__backing = True
             self.quit_robot()
             sys.exit(0)
 
@@ -444,13 +447,14 @@ class Robot():
         print('Robot is going back to safe position')
         self.record_posi()
         for i in range(self.back_time):
-            self.observe()
+            # self.observe()
+            self.single_recv()
             self.take_action(self.line_interpolating(self.record_position, self.back_position, i, self.back_time))
 
     def go_position(self, position, timing):
         print('Robot is going to destination {}'.format(position))
-        ori_posi = self.position.copy()
-
+        # ori_posi = self.position.copy()
+        ori_posi = [i for i in self.position]
         for i in range(timing):
             self.observe()
             self.take_action(self.line_interpolating(ori_posi, position, i, timing))
@@ -471,16 +475,13 @@ class Robot():
         return self.quaternion
 
     def from_quaternion_to_rot(self):
-        return quaternion_rotation_matrix(self.quaternion)
+        return pyb_get([self.quaternion[1], self.quaternion[2], self.quaternion[3], self.quaternion[0]])
 
     def GetMotorVelocities(self):
         return self.position
 
     def GetFootContacts(self):
-        if self.contact_bias is not None:
-            return [1 if self.GetFootForce()[i] >self.contact_bias[i]  else 0 for i in range(4)]
-        else:
-            return  None
+        return [1 if self.GetFootForce()[i] > 20 else 0 for i in range(4)]
 
     def GetFootForce(self):
         return self.state.footForce
@@ -489,27 +490,48 @@ class Robot():
         return self.state.footForceEst
 
 
-    def stand_up(self, timer):
+    def stand_up(self, timer, stand=None):
+        if stand is not None:
+            self.stand_gait = stand
         self.observe()
         self.init_motor(self.position)
         ori_posi = self.position.copy()
         for idx in range(timer):
             # print(len(generate_line_begin_end(act, e, idx, T)))
             self.observe()
-            print("upping ", self.position)
+            # print("upping ", self.position)
             # print("tau from state: ", a1.tau)
             self.take_action(self.line_interpolating(ori_posi, self.stand_gait, idx, timer))
         contact = []
+        vel_bias = []
         for i in range(100):
             self.observe()
+            vel_bias.append(self.get_body_vel())
             contact.append(self.GetFootForce())
             self.hold_on()
         self.contact_bias = np.array(contact).mean(0)
+        self.vel_bias = np.array(vel_bias).mean(0)
+        # print("self.vel_bias is " ,self.vel_bias)
 
     def get_body_vel(self):
         # self.vel_est.update()
+        # self.vel_est.update()
+        # print('self.state.tick', self.state.tick)
         self.vel_estimator.update(self.state.tick / 1000)
         self.est_vel = self.vel_estimator.estimated_velocity.copy()
+        # self.est_vel*=
+        # self.est_vel[0] += 0.063
+        if self.vel_bias is not None:
+            self.est_vel -= self.vel_bias
         return self.est_vel
+
+    def reset_esti(self):
+        # self.vel_estimator.reset()
+        self.vel_estimator = VelocityEstimator(self,accelerometer_variance= 0.03059, sensor_variance=0.006206, moving_window_filter_size=20)
+
+        # self.set_vel_bias(self.est_vel)
+
+    def set_vel_bias(self, bias):
+        self.vel_bias = bias
 
 

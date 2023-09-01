@@ -6,6 +6,7 @@ import signal
 import sys
 from unitree_deploy.angle_utils import sine_generator
 # from raisimGymTorch.deploy_log.draw_map import Drawer
+# from raisimGymTorch.deploy_log.csv_saver import CSV_saver
 a1 = rbt.Robot()
 
 
@@ -30,6 +31,7 @@ def signal_handler(signal, frame):
     print('You pressed Ctrl+C!')
     a1.quit_robot()
     # debug_draw_gry.draw()
+    # writer.save()
     sys.exit(0)
 
 
@@ -37,7 +39,7 @@ signal.signal(signal.SIGINT, signal_handler)
 
 # take action
 # a1.take_action(posi)
-
+# writer = CSV_saver('raw acc')
 
 if __name__=='__main__':
     # debug_draw_gry = Drawer("debug_draw_angular_vel")
@@ -48,14 +50,17 @@ if __name__=='__main__':
     # print(obs)
     # print("tau est: ", a1.tau)
     # act = a1.position
-    # a1.dt = 0.3
+    # a1
+    # .dt = 0.3
     # print(act)
     # print(a1.position_limit_up, a1.position_limit_down)
     a1.kp = [150] * 12
     a1.kd = [7] * 12
-    a1.torque_limit=31
-
-    a1.stand_up(400)
+    a1.torque_limit=33.5
+    a = (30) / 180  *3.14
+    b = -2 * a
+    stan =  [ 0., a, b]*4
+    a1.stand_up(200, stan)
     # observe
 
     # make action
@@ -90,7 +95,7 @@ if __name__=='__main__':
     # a1.kd = [5, 4, 7] * 4
     # a1.init_k(a1.kp, a1.kd)
     # print(a1.kp, a1.kd)
-    # sine_T = 100
+    sine_T = 100
     # # ang_list = a1.stand_gait.copy()
     # for idx in range(sine_T * 10):
     #     print(a1.observe())
@@ -99,7 +104,9 @@ if __name__=='__main__':
     #     a1.take_action(sine_generator(idx, sine_T, 0.15).tolist())
     while True:
         a1.observe()
-
+        # writer.add_list(a1.accelerometer)
+        print("acc ",a1.accelerometer)
+        print("contact ", a1.GetFootContacts())
         # print("standing ", a1.position )
         # debug_draw_gry.add_map_list(a1.gyroscope)
         a1.hold_on()
@@ -108,3 +115,12 @@ if __name__=='__main__':
     signal_handler(0, 0)
     # print('------------------------------------------------')
 
+
+    # todo
+    """
+    todo
+    
+    1. test the back up speed  and find the reason
+    2. check the reason of the get foot contacts ?
+    
+    """

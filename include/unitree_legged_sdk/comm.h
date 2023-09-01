@@ -117,7 +117,7 @@ namespace UNITREE_LEGGED_SDK
         std::array<Cartesian,4> footSpeed2Body;       // foot speed relative to body
 		std::array<int16_t,4> footForce;
 		std::array<int16_t,4> footForceEst;
-        uint32_t tick;                     // reference real-time from motion controller (unit: us)
+        uint32_t tick;                     // reference real-time from motion controller (unit: ms)
 
 		std::array<uint8_t,40> wirelessRemote;
 		uint32_t reserve;

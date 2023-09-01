@@ -61,6 +61,7 @@ class VelocityEstimator:
         print("resetting velocity estimator")
         self.filter.x = np.zeros(3)
         self.filter.P = np.eye(3) * self._initial_variance
+        self._estimated_velocity=np.zeros(3)
         self.moving_window_filter_x = MovingWindowFilter(
             window_size=self._window_size)
         self.moving_window_filter_y = MovingWindowFilter(
@@ -72,10 +73,12 @@ class VelocityEstimator:
     def _compute_delta_time(self, current_time):
         if self._last_timestamp == 0.:
             # First timestamp received, return an estimated delta_time.
-            delta_time_s = self.robot.dt
+            delta_time_s = self.robot.dt   # 0.01 s
         else:
             delta_time_s = current_time - self._last_timestamp
+        # print('cost time', delta_time_s)
         self._last_timestamp = current_time
+        # print('current ', current_time)
         return delta_time_s
 
     def update(self, current_time):
@@ -88,10 +91,11 @@ class VelocityEstimator:
         rot_mat = np.array(rot_mat).reshape((3, 3))
 
         calibrated_acc = sensor_acc + np.linalg.inv(rot_mat).dot(
-            np.array([0., 0., -9.81]))
+            np.array([0., 0., -9.794]))
         self._calibrated_acc = calibrated_acc
         self.filter.predict(u=calibrated_acc * delta_time_s)
-
+        # print("calibrated_acc", self._calibrated_acc)
+        # print('calibrated_vel', self._calibrated_acc*self.robot.dt)
         # Correct estimation using contact legs
         observed_velocities = []
         self._observed_velocities = []
@@ -109,15 +113,19 @@ class VelocityEstimator:
                 self._observed_velocities.append(base_velocity_in_base_frame)
             else:
                 self._observed_velocities.append(np.zeros(3))
+        #
+        # print("observe_vel:",self._observed_velocities)
 
         if len(observed_velocities) > 0:
             observed_velocities = np.mean(observed_velocities, axis=0)
+            # print("mean ob-vel ", observed_velocities)
             self.filter.update(observed_velocities)
 
         vel_x = self.moving_window_filter_x.calculate_average(self.filter.x[0])
         vel_y = self.moving_window_filter_y.calculate_average(self.filter.x[1])
         vel_z = self.moving_window_filter_z.calculate_average(self.filter.x[2])
         self._estimated_velocity = np.array([vel_x, vel_y, vel_z])
+        # print("estimated_velocity:", self._estimated_velocity)
 
     @property
     def estimated_velocity(self):
