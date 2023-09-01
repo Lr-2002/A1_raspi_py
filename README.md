@@ -1,5 +1,24 @@
 # v3.3.1
 
+## How to use
+
+This is the repo build to run your RL algorithm on the Unitree A1 
+
+And now I'll tell you how to use this repo 
+
+
+
+Before you start, you should have things below:
+
+1. cable(connect your PC to A1)
+2. A PC (Linux / Win is all ok )
+3. Python(3.8 + recommend)
+
+Now Let's start build
+
+1. build your Unitree sdk as following command (from Info to Important parts )
+2. build the python version(notice the CMAKELISTS.txt)
+
 ## Info
 
 This repo was forked from [Maddy](https://github.com/Maddy1206/quadruped_py_control) and [Unitree](https://github.com/unitreerobotics/unitree_legged_sdk) 
@@ -139,4 +158,21 @@ while True:
 #     a1.hold_on()
 
 ```
+
+## How to change the file to fit your observation and action?
+
+1. in the `robot.py` file, change the `observe()` func to fit your observation
+2. in the `take_action` func, it'll change your action to command and send it to your robot 
+
+
+
+
+
+## What's more 
+
+1. the connection might be not stable if your cable is not very strong or stable ,It'll limit the behavior of your robot 
+2. I've established a limit of torque and position 
+3. change the `PowerProtect` if there is an error `Power Protection end ` when you run your model 
+
+All these funcs are in the `robot.py` file 
 
