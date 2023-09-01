@@ -600,14 +600,5 @@ class Robot():
             self.est_vel -= self.vel_bias
         return self.est_vel
 
-    def reset_esti(self):
-        """
-        reset the estimator which
-        deprecated
-        :return:
-        """
-        self.vel_estimator = VelocityEstimator(self,accelerometer_variance= 0.03059, sensor_variance=0.006206, moving_window_filter_size=20)
-
-
 
 
